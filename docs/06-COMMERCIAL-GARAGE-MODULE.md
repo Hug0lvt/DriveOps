@@ -2544,3 +2544,2337 @@ message GetInterventionsResponse {
   int32 page_size = 4;
 }
 ```
+
+---
+
+## 7. Blazor UI Components
+
+### 7.1 Workshop Management Components
+
+#### Workshop Dashboard Component
+```csharp
+namespace DriveOps.Garage.Presentation.Components
+{
+    public partial class WorkshopDashboard : ComponentBase
+    {
+        [Inject] private IMediator Mediator { get; set; } = default!;
+        [Inject] private INotificationService NotificationService { get; set; } = default!;
+        [Parameter] public Guid WorkshopId { get; set; }
+
+        private WorkshopDto? workshop;
+        private List<WorkshopBayDto> bays = new();
+        private List<InterventionSummaryDto> todayInterventions = new();
+        private WorkshopKpisDto kpis = new();
+        private bool isLoading = true;
+
+        protected override async Task OnInitializedAsync()
+        {
+            await LoadDashboardDataAsync();
+        }
+
+        private async Task LoadDashboardDataAsync()
+        {
+            isLoading = true;
+
+            try
+            {
+                var workshopTask = LoadWorkshopAsync();
+                var baysTask = LoadBaysAsync();
+                var interventionsTask = LoadTodayInterventionsAsync();
+                var kpisTask = LoadKpisAsync();
+
+                await Task.WhenAll(workshopTask, baysTask, interventionsTask, kpisTask);
+            }
+            catch (Exception ex)
+            {
+                await NotificationService.ShowErrorAsync($"Error loading dashboard: {ex.Message}");
+            }
+            finally
+            {
+                isLoading = false;
+                StateHasChanged();
+            }
+        }
+
+        private async Task LoadWorkshopAsync()
+        {
+            var result = await Mediator.Send(new GetWorkshopByIdQuery(
+                TenantContext.TenantId, 
+                UserContext.UserId, 
+                WorkshopId
+            ));
+            
+            if (result.IsSuccess)
+                workshop = result.Value;
+        }
+
+        private async Task LoadBaysAsync()
+        {
+            var result = await Mediator.Send(new GetWorkshopBaysQuery(
+                TenantContext.TenantId, 
+                UserContext.UserId, 
+                WorkshopId
+            ));
+            
+            if (result.IsSuccess)
+                bays = result.Value;
+        }
+
+        private async Task LoadTodayInterventionsAsync()
+        {
+            var today = DateTime.Today;
+            var result = await Mediator.Send(new GetInterventionsQuery(
+                TenantContext.TenantId,
+                UserContext.UserId,
+                WorkshopId,
+                null, // any status
+                null, // any mechanic
+                today,
+                today.AddDays(1),
+                1,
+                50
+            ));
+            
+            if (result.IsSuccess)
+                todayInterventions = result.Value.Items.ToList();
+        }
+
+        private async Task LoadKpisAsync()
+        {
+            var result = await Mediator.Send(new GetWorkshopKpisQuery(
+                TenantContext.TenantId,
+                UserContext.UserId,
+                WorkshopId,
+                DateTime.Today.AddDays(-30),
+                DateTime.Today
+            ));
+            
+            if (result.IsSuccess)
+                kpis = result.Value;
+        }
+    }
+}
+```
+
+#### Workshop Dashboard Razor Component
+```razor
+@namespace DriveOps.Garage.Presentation.Components
+@inherits ComponentBase
+
+<RadzenStack Gap="1rem">
+    @if (isLoading)
+    {
+        <RadzenCard>
+            <RadzenProgressBarCircular ShowValue="true" Value="100" Mode="ProgressBarMode.Indeterminate" />
+            <RadzenText Text="Loading workshop dashboard..." />
+        </RadzenCard>
+    }
+    else if (workshop != null)
+    {
+        <!-- Workshop Header -->
+        <RadzenCard>
+            <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center">
+                <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" AlignItems="AlignItems.Center">
+                    <RadzenIcon Icon="business" Style="font-size: 2rem;" />
+                    <RadzenStack Gap="0.25rem">
+                        <RadzenText TextStyle="TextStyle.H4" Text="@workshop.Name" />
+                        <RadzenText TextStyle="TextStyle.Subtitle2" Text="@($"{workshop.Address.City}, {workshop.Address.Country}")" />
+                    </RadzenStack>
+                </RadzenStack>
+                <RadzenButton Text="Settings" Icon="settings" ButtonStyle="ButtonStyle.Light" />
+            </RadzenStack>
+        </RadzenCard>
+
+        <!-- KPIs Row -->
+        <RadzenRow Gap="1rem">
+            <RadzenColumn Size="3">
+                <RadzenCard>
+                    <RadzenStack Gap="0.5rem">
+                        <RadzenText TextStyle="TextStyle.Overline" Text="TODAY'S INTERVENTIONS" />
+                        <RadzenText TextStyle="TextStyle.H3" Text="@todayInterventions.Count.ToString()" />
+                        <RadzenText TextStyle="TextStyle.Body2" Text="@($"{todayInterventions.Count(i => i.Status == InterventionStatus.Completed)} completed")" />
+                    </RadzenStack>
+                </RadzenCard>
+            </RadzenColumn>
+            <RadzenColumn Size="3">
+                <RadzenCard>
+                    <RadzenStack Gap="0.5rem">
+                        <RadzenText TextStyle="TextStyle.Overline" Text="AVAILABLE BAYS" />
+                        <RadzenText TextStyle="TextStyle.H3" Text="@bays.Count(b => b.Status == BayStatus.Available).ToString()" />
+                        <RadzenText TextStyle="TextStyle.Body2" Text="@($"of {bays.Count} total")" />
+                    </RadzenStack>
+                </RadzenCard>
+            </RadzenColumn>
+            <RadzenColumn Size="3">
+                <RadzenCard>
+                    <RadzenStack Gap="0.5rem">
+                        <RadzenText TextStyle="TextStyle.Overline" Text="MONTHLY REVENUE" />
+                        <RadzenText TextStyle="TextStyle.H3" Text="@($"€{kpis.MonthlyRevenue:N0}")" />
+                        <RadzenText TextStyle="TextStyle.Body2" Text="@($"{kpis.RevenueGrowthPercentage:+0.0;-0.0;0}% vs last month")" />
+                    </RadzenStack>
+                </RadzenCard>
+            </RadzenColumn>
+            <RadzenColumn Size="3">
+                <RadzenCard>
+                    <RadzenStack Gap="0.5rem">
+                        <RadzenText TextStyle="TextStyle.Overline" Text="EFFICIENCY" />
+                        <RadzenText TextStyle="TextStyle.H3" Text="@($"{kpis.EfficiencyPercentage:F1}%")" />
+                        <RadzenText TextStyle="TextStyle.Body2" Text="Bay utilization" />
+                    </RadzenStack>
+                </RadzenCard>
+            </RadzenColumn>
+        </RadzenRow>
+
+        <!-- Main Content Row -->
+        <RadzenRow Gap="1rem">
+            <!-- Bay Status -->
+            <RadzenColumn Size="4">
+                <RadzenCard>
+                    <RadzenStack Gap="1rem">
+                        <RadzenText TextStyle="TextStyle.H6" Text="Workshop Bays" />
+                        <RadzenDataList Data="@bays" TItem="WorkshopBayDto">
+                            <Template Context="bay">
+                                <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center">
+                                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem" AlignItems="AlignItems.Center">
+                                        <RadzenBadge BadgeStyle="@GetBayStatusBadgeStyle(bay.Status)" Text="@bay.Status.ToString()" />
+                                        <RadzenText Text="@bay.Name" />
+                                    </RadzenStack>
+                                    <RadzenButton Text="Manage" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" />
+                                </RadzenStack>
+                            </Template>
+                        </RadzenDataList>
+                    </RadzenStack>
+                </RadzenCard>
+            </RadzenColumn>
+
+            <!-- Today's Interventions -->
+            <RadzenColumn Size="8">
+                <RadzenCard>
+                    <RadzenStack Gap="1rem">
+                        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center">
+                            <RadzenText TextStyle="TextStyle.H6" Text="Today's Interventions" />
+                            <RadzenButton Text="New Intervention" Icon="add" ButtonStyle="ButtonStyle.Primary" />
+                        </RadzenStack>
+                        
+                        <RadzenDataGrid Data="@todayInterventions" TItem="InterventionSummaryDto" AllowSorting="true">
+                            <Columns>
+                                <RadzenDataGridColumn TItem="InterventionSummaryDto" Property="InterventionNumber" Title="Number" Width="120px" />
+                                <RadzenDataGridColumn TItem="InterventionSummaryDto" Property="VehicleLicensePlate" Title="Vehicle" Width="120px" />
+                                <RadzenDataGridColumn TItem="InterventionSummaryDto" Property="CustomerName" Title="Customer" Width="150px" />
+                                <RadzenDataGridColumn TItem="InterventionSummaryDto" Property="Type" Title="Type" Width="100px" />
+                                <RadzenDataGridColumn TItem="InterventionSummaryDto" Property="Status" Title="Status" Width="120px">
+                                    <Template Context="intervention">
+                                        <RadzenBadge BadgeStyle="@GetInterventionStatusBadgeStyle(intervention.Status)" Text="@intervention.Status.ToString()" />
+                                    </Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="InterventionSummaryDto" Property="MechanicName" Title="Mechanic" Width="120px" />
+                                <RadzenDataGridColumn TItem="InterventionSummaryDto" Title="Actions" Width="100px">
+                                    <Template Context="intervention">
+                                        <RadzenButton Icon="visibility" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" 
+                                                    Click="@(() => NavigateToIntervention(intervention.Id))" />
+                                    </Template>
+                                </RadzenDataGridColumn>
+                            </Columns>
+                        </RadzenDataGrid>
+                    </RadzenStack>
+                </RadzenCard>
+            </RadzenColumn>
+        </RadzenRow>
+    }
+</RadzenStack>
+
+@code {
+    private BadgeStyle GetBayStatusBadgeStyle(BayStatus status) => status switch
+    {
+        BayStatus.Available => BadgeStyle.Success,
+        BayStatus.InUse => BadgeStyle.Warning,
+        BayStatus.Reserved => BadgeStyle.Info,
+        BayStatus.Maintenance => BadgeStyle.Secondary,
+        BayStatus.OutOfOrder => BadgeStyle.Danger,
+        _ => BadgeStyle.Light
+    };
+
+    private BadgeStyle GetInterventionStatusBadgeStyle(InterventionStatus status) => status switch
+    {
+        InterventionStatus.Draft => BadgeStyle.Light,
+        InterventionStatus.Estimated => BadgeStyle.Info,
+        InterventionStatus.Approved => BadgeStyle.Primary,
+        InterventionStatus.Assigned => BadgeStyle.Secondary,
+        InterventionStatus.InProgress => BadgeStyle.Warning,
+        InterventionStatus.Completed => BadgeStyle.Success,
+        InterventionStatus.Invoiced => BadgeStyle.Success,
+        InterventionStatus.Paid => BadgeStyle.Success,
+        InterventionStatus.Cancelled => BadgeStyle.Danger,
+        _ => BadgeStyle.Light
+    };
+
+    private void NavigateToIntervention(Guid interventionId)
+    {
+        NavigationManager.NavigateTo($"/garage/interventions/{interventionId}");
+    }
+}
+```
+
+### 7.2 Intervention Management Components
+
+#### Intervention Detail Component
+```csharp
+namespace DriveOps.Garage.Presentation.Components
+{
+    public partial class InterventionDetail : ComponentBase
+    {
+        [Inject] private IMediator Mediator { get; set; } = default!;
+        [Inject] private INotificationService NotificationService { get; set; } = default!;
+        [Parameter] public Guid InterventionId { get; set; }
+
+        private InterventionDetailDto? intervention;
+        private List<MechanicAvailabilityDto> availableMechanics = new();
+        private bool isLoading = true;
+        private bool isAssignMechanicDialogVisible = false;
+        private bool isAddItemDialogVisible = false;
+        private Guid? selectedMechanicId;
+
+        protected override async Task OnInitializedAsync()
+        {
+            await LoadInterventionAsync();
+        }
+
+        private async Task LoadInterventionAsync()
+        {
+            isLoading = true;
+            try
+            {
+                var result = await Mediator.Send(new GetInterventionByIdQuery(
+                    TenantContext.TenantId,
+                    UserContext.UserId,
+                    InterventionId
+                ));
+
+                if (result.IsSuccess)
+                    intervention = result.Value;
+                else
+                    await NotificationService.ShowErrorAsync(result.Error);
+            }
+            catch (Exception ex)
+            {
+                await NotificationService.ShowErrorAsync($"Error loading intervention: {ex.Message}");
+            }
+            finally
+            {
+                isLoading = false;
+                StateHasChanged();
+            }
+        }
+
+        private async Task AssignMechanicAsync()
+        {
+            if (!selectedMechanicId.HasValue || intervention == null)
+                return;
+
+            try
+            {
+                var command = new AssignMechanicToInterventionCommand(
+                    TenantContext.TenantId,
+                    UserContext.UserId,
+                    Guid.NewGuid().ToString(),
+                    intervention.Id,
+                    selectedMechanicId.Value
+                );
+
+                var result = await Mediator.Send(command);
+
+                if (result.IsSuccess)
+                {
+                    await NotificationService.ShowSuccessAsync("Mechanic assigned successfully");
+                    await LoadInterventionAsync();
+                    isAssignMechanicDialogVisible = false;
+                }
+                else
+                {
+                    await NotificationService.ShowErrorAsync(result.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                await NotificationService.ShowErrorAsync($"Error assigning mechanic: {ex.Message}");
+            }
+        }
+
+        private async Task StartWorkAsync()
+        {
+            if (intervention == null)
+                return;
+
+            try
+            {
+                var command = new StartInterventionWorkCommand(
+                    TenantContext.TenantId,
+                    UserContext.UserId,
+                    Guid.NewGuid().ToString(),
+                    intervention.Id
+                );
+
+                var result = await Mediator.Send(command);
+
+                if (result.IsSuccess)
+                {
+                    await NotificationService.ShowSuccessAsync("Work started");
+                    await LoadInterventionAsync();
+                }
+                else
+                {
+                    await NotificationService.ShowErrorAsync(result.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                await NotificationService.ShowErrorAsync($"Error starting work: {ex.Message}");
+            }
+        }
+
+        private async Task CompleteWorkAsync()
+        {
+            if (intervention == null)
+                return;
+
+            // Show completion dialog with notes
+            // Implementation would include a dialog for completion notes
+        }
+
+        private async Task ShowAssignMechanicDialogAsync()
+        {
+            if (intervention == null)
+                return;
+
+            try
+            {
+                var result = await Mediator.Send(new GetAvailableMechanicsQuery(
+                    TenantContext.TenantId,
+                    UserContext.UserId,
+                    intervention.WorkshopId,
+                    DateTime.Now,
+                    DateTime.Now.AddHours(8)
+                ));
+
+                if (result.IsSuccess)
+                {
+                    availableMechanics = result.Value;
+                    isAssignMechanicDialogVisible = true;
+                }
+                else
+                {
+                    await NotificationService.ShowErrorAsync(result.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                await NotificationService.ShowErrorAsync($"Error loading mechanics: {ex.Message}");
+            }
+        }
+    }
+}
+```
+
+---
+
+## 8. Integration Points
+
+### 8.1 Core Module Integrations
+
+#### Users Module Integration
+```csharp
+namespace DriveOps.Garage.Infrastructure.Integrations
+{
+    public interface IUserIntegrationService
+    {
+        Task<UserDto?> GetUserByIdAsync(Guid userId);
+        Task<List<UserDto>> GetUsersByIdsAsync(List<Guid> userIds);
+        Task<bool> ValidateUserPermissionAsync(Guid userId, string permission);
+        Task<List<UserDto>> GetUsersByRoleAsync(string roleName);
+    }
+
+    public class UserIntegrationService : IUserIntegrationService
+    {
+        private readonly IUserGrpcClient _userGrpcClient;
+        private readonly IMemoryCache _cache;
+        private readonly ILogger<UserIntegrationService> _logger;
+
+        public UserIntegrationService(
+            IUserGrpcClient userGrpcClient,
+            IMemoryCache cache,
+            ILogger<UserIntegrationService> logger)
+        {
+            _userGrpcClient = userGrpcClient;
+            _cache = cache;
+            _logger = logger;
+        }
+
+        public async Task<UserDto?> GetUserByIdAsync(Guid userId)
+        {
+            var cacheKey = $"user_{userId}";
+            
+            if (_cache.TryGetValue(cacheKey, out UserDto? cachedUser))
+                return cachedUser;
+
+            try
+            {
+                var user = await _userGrpcClient.GetUserByIdAsync(userId);
+                
+                if (user != null)
+                {
+                    _cache.Set(cacheKey, user, TimeSpan.FromMinutes(15));
+                }
+                
+                return user;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving user {UserId}", userId);
+                return null;
+            }
+        }
+
+        public async Task<bool> ValidateUserPermissionAsync(Guid userId, string permission)
+        {
+            try
+            {
+                return await _userGrpcClient.ValidatePermissionAsync(userId, permission);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error validating permission {Permission} for user {UserId}", permission, userId);
+                return false;
+            }
+        }
+    }
+}
+```
+
+#### Vehicle Module Integration
+```csharp
+namespace DriveOps.Garage.Infrastructure.Integrations
+{
+    public interface IVehicleIntegrationService
+    {
+        Task<VehicleDto?> GetVehicleByIdAsync(Guid vehicleId);
+        Task<List<VehicleDto>> GetVehiclesByOwnerAsync(Guid ownerId);
+        Task<bool> UpdateVehicleMileageAsync(Guid vehicleId, int newMileage);
+        Task AddMaintenanceRecordAsync(Guid vehicleId, MaintenanceRecordDto record);
+    }
+
+    public class VehicleIntegrationService : IVehicleIntegrationService
+    {
+        private readonly IVehicleGrpcClient _vehicleGrpcClient;
+        private readonly ILogger<VehicleIntegrationService> _logger;
+
+        public async Task<VehicleDto?> GetVehicleByIdAsync(Guid vehicleId)
+        {
+            try
+            {
+                return await _vehicleGrpcClient.GetVehicleByIdAsync(vehicleId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving vehicle {VehicleId}", vehicleId);
+                return null;
+            }
+        }
+
+        public async Task<bool> UpdateVehicleMileageAsync(Guid vehicleId, int newMileage)
+        {
+            try
+            {
+                await _vehicleGrpcClient.UpdateMileageAsync(vehicleId, newMileage);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating mileage for vehicle {VehicleId}", vehicleId);
+                return false;
+            }
+        }
+
+        public async Task AddMaintenanceRecordAsync(Guid vehicleId, MaintenanceRecordDto record)
+        {
+            try
+            {
+                await _vehicleGrpcClient.AddMaintenanceRecordAsync(vehicleId, record);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error adding maintenance record for vehicle {VehicleId}", vehicleId);
+                throw;
+            }
+        }
+    }
+}
+```
+
+#### Files Module Integration
+```csharp
+namespace DriveOps.Garage.Infrastructure.Integrations
+{
+    public interface IFileIntegrationService
+    {
+        Task<Guid> UploadEstimateAsync(byte[] pdfContent, string filename, Guid interventionId);
+        Task<Guid> UploadInvoiceAsync(byte[] pdfContent, string filename, Guid interventionId);
+        Task<Guid> UploadPartImageAsync(byte[] imageContent, string filename, Guid partId);
+        Task<byte[]?> DownloadFileAsync(Guid fileId);
+        Task<string?> GetFileUrlAsync(Guid fileId);
+    }
+
+    public class FileIntegrationService : IFileIntegrationService
+    {
+        private readonly IFileGrpcClient _fileGrpcClient;
+        private readonly ILogger<FileIntegrationService> _logger;
+
+        public async Task<Guid> UploadEstimateAsync(byte[] pdfContent, string filename, Guid interventionId)
+        {
+            try
+            {
+                return await _fileGrpcClient.UploadFileAsync(
+                    pdfContent,
+                    filename,
+                    "application/pdf",
+                    "Intervention",
+                    interventionId.ToString()
+                );
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error uploading estimate for intervention {InterventionId}", interventionId);
+                throw;
+            }
+        }
+
+        public async Task<Guid> UploadPartImageAsync(byte[] imageContent, string filename, Guid partId)
+        {
+            try
+            {
+                return await _fileGrpcClient.UploadFileAsync(
+                    imageContent,
+                    filename,
+                    "image/jpeg",
+                    "Part",
+                    partId.ToString()
+                );
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error uploading image for part {PartId}", partId);
+                throw;
+            }
+        }
+    }
+}
+```
+
+#### Notifications Module Integration
+```csharp
+namespace DriveOps.Garage.Infrastructure.Integrations
+{
+    public interface INotificationIntegrationService
+    {
+        Task SendInterventionStatusUpdateAsync(Guid customerId, InterventionStatusChangedEvent eventData);
+        Task SendEstimateReadyAsync(Guid customerId, Guid estimateId);
+        Task SendInvoiceAsync(Guid customerId, Guid invoiceId);
+        Task SendMaintenanceReminderAsync(Guid customerId, Guid vehicleId, string serviceType);
+        Task SendLowStockAlertAsync(List<Guid> userIds, List<PartStockAlertDto> lowStockParts);
+    }
+
+    public class NotificationIntegrationService : INotificationIntegrationService
+    {
+        private readonly INotificationGrpcClient _notificationClient;
+        private readonly ILogger<NotificationIntegrationService> _logger;
+
+        public async Task SendInterventionStatusUpdateAsync(Guid customerId, InterventionStatusChangedEvent eventData)
+        {
+            var notification = new NotificationDto
+            {
+                UserId = customerId,
+                Type = "intervention_status_update",
+                Title = "Service Update",
+                Message = $"Your vehicle service (#{eventData.InterventionNumber}) status has been updated to {eventData.NewStatus}",
+                Data = new Dictionary<string, object>
+                {
+                    ["intervention_id"] = eventData.InterventionId,
+                    ["status"] = eventData.NewStatus
+                }
+            };
+
+            await _notificationClient.SendNotificationAsync(notification);
+        }
+
+        public async Task SendEstimateReadyAsync(Guid customerId, Guid estimateId)
+        {
+            var notification = new NotificationDto
+            {
+                UserId = customerId,
+                Type = "estimate_ready",
+                Title = "Estimate Ready",
+                Message = "Your service estimate is ready for review",
+                Data = new Dictionary<string, object>
+                {
+                    ["estimate_id"] = estimateId
+                }
+            };
+
+            await _notificationClient.SendNotificationAsync(notification);
+        }
+
+        public async Task SendLowStockAlertAsync(List<Guid> userIds, List<PartStockAlertDto> lowStockParts)
+        {
+            var notification = new NotificationDto
+            {
+                Type = "low_stock_alert",
+                Title = "Low Stock Alert",
+                Message = $"{lowStockParts.Count} parts are running low on stock",
+                Data = new Dictionary<string, object>
+                {
+                    ["parts"] = lowStockParts
+                }
+            };
+
+            foreach (var userId in userIds)
+            {
+                notification.UserId = userId;
+                await _notificationClient.SendNotificationAsync(notification);
+            }
+        }
+    }
+}
+```
+
+### 8.2 External Integrations
+
+#### Parts Supplier Integration
+```csharp
+namespace DriveOps.Garage.Infrastructure.ExternalIntegrations
+{
+    public interface IPartsSupplierIntegrationService
+    {
+        Task<List<PartCatalogItemDto>> SearchPartsAsync(string searchTerm, Guid? brandId = null);
+        Task<PartAvailabilityDto> CheckPartAvailabilityAsync(string supplierPartNumber, Guid supplierId);
+        Task<Guid> CreatePurchaseOrderAsync(Guid supplierId, List<PurchaseOrderItemDto> items);
+        Task<PurchaseOrderStatusDto> GetPurchaseOrderStatusAsync(Guid purchaseOrderId);
+        Task SyncPartsCatalogAsync(Guid supplierId);
+    }
+
+    public class GSFSupplierIntegrationService : IPartsSupplierIntegrationService
+    {
+        private readonly HttpClient _httpClient;
+        private readonly IConfiguration _configuration;
+        private readonly ILogger<GSFSupplierIntegrationService> _logger;
+
+        public async Task<List<PartCatalogItemDto>> SearchPartsAsync(string searchTerm, Guid? brandId = null)
+        {
+            try
+            {
+                var apiKey = _configuration["Suppliers:GSF:ApiKey"];
+                var endpoint = _configuration["Suppliers:GSF:SearchEndpoint"];
+
+                var request = new
+                {
+                    query = searchTerm,
+                    brand_id = brandId?.ToString(),
+                    include_availability = true
+                };
+
+                _httpClient.DefaultRequestHeaders.Add("X-API-Key", apiKey);
+                
+                var response = await _httpClient.PostAsJsonAsync(endpoint, request);
+                response.EnsureSuccessStatusCode();
+
+                var result = await response.Content.ReadFromJsonAsync<GSFSearchResponse>();
+                
+                return result?.Parts?.Select(p => new PartCatalogItemDto
+                {
+                    SupplierPartNumber = p.PartNumber,
+                    Name = p.Name,
+                    Description = p.Description,
+                    Manufacturer = p.Manufacturer,
+                    ListPrice = p.Price,
+                    Currency = "EUR",
+                    InStock = p.Availability > 0,
+                    StockQuantity = p.Availability,
+                    LeadTimeDays = p.LeadTime
+                }).ToList() ?? new List<PartCatalogItemDto>();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error searching parts with GSF supplier");
+                return new List<PartCatalogItemDto>();
+            }
+        }
+
+        public async Task<Guid> CreatePurchaseOrderAsync(Guid supplierId, List<PurchaseOrderItemDto> items)
+        {
+            try
+            {
+                var apiKey = _configuration["Suppliers:GSF:ApiKey"];
+                var endpoint = _configuration["Suppliers:GSF:OrderEndpoint"];
+
+                var orderRequest = new
+                {
+                    items = items.Select(i => new
+                    {
+                        part_number = i.PartNumber,
+                        quantity = i.Quantity,
+                        reference = i.Reference
+                    }),
+                    delivery_address = await GetWorkshopDeliveryAddressAsync()
+                };
+
+                _httpClient.DefaultRequestHeaders.Add("X-API-Key", apiKey);
+                
+                var response = await _httpClient.PostAsJsonAsync(endpoint, orderRequest);
+                response.EnsureSuccessStatusCode();
+
+                var result = await response.Content.ReadFromJsonAsync<GSFOrderResponse>();
+                
+                return Guid.Parse(result.OrderId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating purchase order with GSF supplier");
+                throw;
+            }
+        }
+    }
+}
+```
+
+#### Payment Processing Integration
+```csharp
+namespace DriveOps.Garage.Infrastructure.ExternalIntegrations
+{
+    public interface IPaymentProcessingService
+    {
+        Task<PaymentIntentDto> CreatePaymentIntentAsync(Guid invoiceId, decimal amount, string currency);
+        Task<PaymentStatusDto> GetPaymentStatusAsync(string paymentIntentId);
+        Task<bool> RefundPaymentAsync(string paymentIntentId, decimal? amount = null);
+        Task<List<PaymentMethodDto>> GetCustomerPaymentMethodsAsync(Guid customerId);
+    }
+
+    public class StripePaymentService : IPaymentProcessingService
+    {
+        private readonly StripeClient _stripeClient;
+        private readonly ILogger<StripePaymentService> _logger;
+
+        public async Task<PaymentIntentDto> CreatePaymentIntentAsync(Guid invoiceId, decimal amount, string currency)
+        {
+            try
+            {
+                var options = new PaymentIntentCreateOptions
+                {
+                    Amount = (long)(amount * 100), // Convert to cents
+                    Currency = currency.ToLower(),
+                    Metadata = new Dictionary<string, string>
+                    {
+                        ["invoice_id"] = invoiceId.ToString(),
+                        ["type"] = "garage_invoice"
+                    },
+                    AutomaticPaymentMethods = new PaymentIntentAutomaticPaymentMethodsOptions
+                    {
+                        Enabled = true
+                    }
+                };
+
+                var service = new PaymentIntentService(_stripeClient);
+                var paymentIntent = await service.CreateAsync(options);
+
+                return new PaymentIntentDto
+                {
+                    Id = paymentIntent.Id,
+                    ClientSecret = paymentIntent.ClientSecret,
+                    Status = paymentIntent.Status,
+                    Amount = amount,
+                    Currency = currency
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating payment intent for invoice {InvoiceId}", invoiceId);
+                throw;
+            }
+        }
+    }
+}
+```
+
+---
+
+## 9. Performance Considerations
+
+### 9.1 Database Optimization
+
+#### Indexing Strategy
+```sql
+-- High-performance indexes for common queries
+
+-- Intervention search and filtering
+CREATE INDEX CONCURRENTLY idx_interventions_search 
+ON garage.interventions(tenant_id, workshop_id, status, created_at DESC)
+WHERE status IN (1, 2, 3, 4, 5); -- Active statuses only
+
+-- Parts search with full-text search
+CREATE INDEX CONCURRENTLY idx_parts_fulltext 
+ON garage.parts USING gin(to_tsvector('english', name || ' ' || description || ' ' || manufacturer));
+
+-- Mechanic availability queries
+CREATE INDEX CONCURRENTLY idx_mechanic_schedules_availability 
+ON garage.mechanic_schedules(mechanic_id, schedule_date, start_time, end_time)
+WHERE is_available = true;
+
+-- Bay utilization queries
+CREATE INDEX CONCURRENTLY idx_interventions_bay_schedule 
+ON garage.interventions(assigned_bay_id, estimated_completion_date)
+WHERE assigned_bay_id IS NOT NULL AND status IN (3, 4, 5);
+
+-- Financial reporting indexes
+CREATE INDEX CONCURRENTLY idx_invoices_financial_reporting 
+ON garage.invoices(tenant_id, created_at, status, total_amount)
+WHERE status = 3; -- Paid invoices only
+
+-- Inventory management indexes
+CREATE INDEX CONCURRENTLY idx_parts_inventory_management 
+ON garage.parts(tenant_id, current_stock, minimum_stock, status)
+WHERE status = 1 AND current_stock <= minimum_stock;
+```
+
+#### Query Optimization
+```csharp
+namespace DriveOps.Garage.Infrastructure.Repositories
+{
+    public class InterventionRepository : IInterventionRepository
+    {
+        private readonly GarageDbContext _context;
+
+        // Optimized query for intervention search with proper includes
+        public async Task<PagedResult<Intervention>> GetInterventionsAsync(
+            Guid tenantId,
+            InterventionSearchCriteria criteria)
+        {
+            var query = _context.Interventions
+                .Where(i => i.TenantId == tenantId)
+                .Include(i => i.Vehicle)
+                .Include(i => i.Customer)
+                .Include(i => i.AssignedMechanic)
+                .ThenInclude(m => m.User)
+                .Include(i => i.Items.Where(item => item.Type == InterventionItemType.Labor))
+                .Include(i => i.Items.Where(item => item.Type == InterventionItemType.Part))
+                .ThenInclude(item => item.Part)
+                .AsNoTracking(); // Read-only for performance
+
+            // Apply filters efficiently
+            if (criteria.WorkshopId.HasValue)
+                query = query.Where(i => i.WorkshopId == criteria.WorkshopId);
+
+            if (criteria.Status.HasValue)
+                query = query.Where(i => i.Status == criteria.Status);
+
+            if (criteria.MechanicId.HasValue)
+                query = query.Where(i => i.AssignedMechanic.Id == criteria.MechanicId);
+
+            if (criteria.FromDate.HasValue)
+                query = query.Where(i => i.CreatedAt >= criteria.FromDate);
+
+            if (criteria.ToDate.HasValue)
+                query = query.Where(i => i.CreatedAt <= criteria.ToDate);
+
+            // Count total before pagination
+            var totalCount = await query.CountAsync();
+
+            // Apply pagination and ordering
+            var items = await query
+                .OrderByDescending(i => i.CreatedAt)
+                .Skip((criteria.Page - 1) * criteria.PageSize)
+                .Take(criteria.PageSize)
+                .ToListAsync();
+
+            return new PagedResult<Intervention>
+            {
+                Items = items,
+                TotalCount = totalCount,
+                Page = criteria.Page,
+                PageSize = criteria.PageSize
+            };
+        }
+
+        // Bulk operations for performance
+        public async Task<List<Intervention>> GetInterventionsByVehicleAsync(Guid vehicleId)
+        {
+            return await _context.Interventions
+                .Where(i => i.VehicleId == vehicleId)
+                .Include(i => i.Items)
+                .AsNoTracking()
+                .OrderByDescending(i => i.CreatedAt)
+                .ToListAsync();
+        }
+    }
+}
+```
+
+### 9.2 Caching Strategy
+
+#### Redis Caching Implementation
+```csharp
+namespace DriveOps.Garage.Infrastructure.Caching
+{
+    public interface IGarageCacheService
+    {
+        Task<T?> GetAsync<T>(string key) where T : class;
+        Task SetAsync<T>(string key, T value, TimeSpan? expiration = null) where T : class;
+        Task RemoveAsync(string key);
+        Task RemovePatternAsync(string pattern);
+    }
+
+    public class GarageCacheService : IGarageCacheService
+    {
+        private readonly IDistributedCache _distributedCache;
+        private readonly ILogger<GarageCacheService> _logger;
+        private readonly JsonSerializerOptions _jsonOptions;
+
+        public GarageCacheService(IDistributedCache distributedCache, ILogger<GarageCacheService> logger)
+        {
+            _distributedCache = distributedCache;
+            _logger = logger;
+            _jsonOptions = new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+            };
+        }
+
+        public async Task<T?> GetAsync<T>(string key) where T : class
+        {
+            try
+            {
+                var cachedValue = await _distributedCache.GetStringAsync(key);
+                if (cachedValue == null)
+                    return null;
+
+                return JsonSerializer.Deserialize<T>(cachedValue, _jsonOptions);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving cached value for key {Key}", key);
+                return null;
+            }
+        }
+
+        public async Task SetAsync<T>(string key, T value, TimeSpan? expiration = null) where T : class
+        {
+            try
+            {
+                var serializedValue = JsonSerializer.Serialize(value, _jsonOptions);
+                var options = new DistributedCacheEntryOptions();
+
+                if (expiration.HasValue)
+                    options.SetAbsoluteExpiration(expiration.Value);
+                else
+                    options.SetAbsoluteExpiration(TimeSpan.FromHours(1)); // Default 1 hour
+
+                await _distributedCache.SetStringAsync(key, serializedValue, options);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error setting cached value for key {Key}", key);
+            }
+        }
+    }
+
+    // Cache implementation for parts catalog
+    public class PartsCacheService
+    {
+        private readonly IGarageCacheService _cacheService;
+        private readonly IPartRepository _partRepository;
+
+        public async Task<List<PartSummaryDto>> GetPartsByCategoryAsync(PartCategory category)
+        {
+            var cacheKey = $"parts_category_{(int)category}";
+            var cachedParts = await _cacheService.GetAsync<List<PartSummaryDto>>(cacheKey);
+
+            if (cachedParts != null)
+                return cachedParts;
+
+            var parts = await _partRepository.GetByCategoryAsync(category);
+            var partDtos = parts.Select(p => new PartSummaryDto
+            {
+                Id = p.Id,
+                PartNumber = p.PartNumber,
+                Name = p.Name,
+                Manufacturer = p.Manufacturer,
+                ListPrice = p.ListPrice.Amount,
+                CurrentStock = p.CurrentStock
+            }).ToList();
+
+            await _cacheService.SetAsync(cacheKey, partDtos, TimeSpan.FromMinutes(30));
+            return partDtos;
+        }
+
+        public async Task InvalidatePartsCacheAsync(PartCategory category)
+        {
+            var cacheKey = $"parts_category_{(int)category}";
+            await _cacheService.RemoveAsync(cacheKey);
+        }
+    }
+}
+```
+
+### 9.3 Real-time Updates
+
+#### SignalR Hub Implementation
+```csharp
+namespace DriveOps.Garage.Infrastructure.Hubs
+{
+    [Authorize]
+    public class GarageHub : Hub
+    {
+        private readonly ITenantContext _tenantContext;
+
+        public GarageHub(ITenantContext tenantContext)
+        {
+            _tenantContext = tenantContext;
+        }
+
+        public override async Task OnConnectedAsync()
+        {
+            var tenantId = Context.User?.GetTenantId();
+            if (tenantId != null)
+            {
+                await Groups.AddToGroupAsync(Context.ConnectionId, $"tenant_{tenantId}");
+            }
+
+            await base.OnConnectedAsync();
+        }
+
+        public override async Task OnDisconnectedAsync(Exception? exception)
+        {
+            var tenantId = Context.User?.GetTenantId();
+            if (tenantId != null)
+            {
+                await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"tenant_{tenantId}");
+            }
+
+            await base.OnDisconnectedAsync(exception);
+        }
+
+        // Join workshop-specific group for real-time updates
+        public async Task JoinWorkshopGroup(string workshopId)
+        {
+            await Groups.AddToGroupAsync(Context.ConnectionId, $"workshop_{workshopId}");
+        }
+
+        public async Task LeaveWorkshopGroup(string workshopId)
+        {
+            await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"workshop_{workshopId}");
+        }
+    }
+
+    // Service for broadcasting real-time updates
+    public interface IGarageRealtimeService
+    {
+        Task BroadcastInterventionStatusChangeAsync(Guid tenantId, Guid workshopId, InterventionStatusChangedEvent eventData);
+        Task BroadcastBayStatusChangeAsync(Guid tenantId, Guid workshopId, BayStatusChangedEvent eventData);
+        Task BroadcastLowStockAlertAsync(Guid tenantId, List<PartStockAlertDto> alerts);
+    }
+
+    public class GarageRealtimeService : IGarageRealtimeService
+    {
+        private readonly IHubContext<GarageHub> _hubContext;
+
+        public async Task BroadcastInterventionStatusChangeAsync(Guid tenantId, Guid workshopId, InterventionStatusChangedEvent eventData)
+        {
+            await _hubContext.Clients.Group($"workshop_{workshopId}")
+                .SendAsync("InterventionStatusChanged", eventData);
+        }
+
+        public async Task BroadcastBayStatusChangeAsync(Guid tenantId, Guid workshopId, BayStatusChangedEvent eventData)
+        {
+            await _hubContext.Clients.Group($"workshop_{workshopId}")
+                .SendAsync("BayStatusChanged", eventData);
+        }
+
+        public async Task BroadcastLowStockAlertAsync(Guid tenantId, List<PartStockAlertDto> alerts)
+        {
+            await _hubContext.Clients.Group($"tenant_{tenantId}")
+                .SendAsync("LowStockAlert", alerts);
+        }
+    }
+}
+```
+
+---
+
+## 10. Security & Compliance
+
+### 10.1 Role-Based Access Control
+
+#### GARAGE Module Permissions
+```csharp
+namespace DriveOps.Garage.Domain.Permissions
+{
+    public static class GaragePermissions
+    {
+        // Workshop permissions
+        public const string ViewWorkshops = "garage:workshops:view";
+        public const string ManageWorkshops = "garage:workshops:manage";
+        public const string ConfigureWorkshops = "garage:workshops:configure";
+
+        // Intervention permissions
+        public const string ViewInterventions = "garage:interventions:view";
+        public const string CreateInterventions = "garage:interventions:create";
+        public const string EditInterventions = "garage:interventions:edit";
+        public const string DeleteInterventions = "garage:interventions:delete";
+        public const string AssignMechanics = "garage:interventions:assign";
+        public const string StartWork = "garage:interventions:start";
+        public const string CompleteWork = "garage:interventions:complete";
+
+        // Mechanic permissions
+        public const string ViewMechanics = "garage:mechanics:view";
+        public const string ManageMechanics = "garage:mechanics:manage";
+        public const string ViewSchedules = "garage:schedules:view";
+        public const string ManageSchedules = "garage:schedules:manage";
+
+        // Parts permissions
+        public const string ViewParts = "garage:parts:view";
+        public const string ManageParts = "garage:parts:manage";
+        public const string ManageInventory = "garage:inventory:manage";
+        public const string ViewReports = "garage:reports:view";
+
+        // Financial permissions
+        public const string ViewFinancials = "garage:financials:view";
+        public const string ManageEstimates = "garage:estimates:manage";
+        public const string ManageInvoices = "garage:invoices:manage";
+        public const string ProcessPayments = "garage:payments:process";
+
+        // Customer data permissions
+        public const string ViewCustomerData = "garage:customers:view";
+        public const string ExportCustomerData = "garage:customers:export";
+    }
+
+    public static class GarageRoles
+    {
+        public const string WorkshopOwner = "garage:workshop-owner";
+        public const string WorkshopManager = "garage:workshop-manager";
+        public const string ServiceAdvisor = "garage:service-advisor";
+        public const string Mechanic = "garage:mechanic";
+        public const string PartsManger = "garage:parts-manager";
+        public const string Receptionist = "garage:receptionist";
+
+        public static readonly Dictionary<string, string[]> DefaultRolePermissions = new()
+        {
+            [WorkshopOwner] = new[]
+            {
+                GaragePermissions.ManageWorkshops,
+                GaragePermissions.ConfigureWorkshops,
+                GaragePermissions.ManageInterventions,
+                GaragePermissions.ManageMechanics,
+                GaragePermissions.ManageParts,
+                GaragePermissions.ManageInventory,
+                GaragePermissions.ViewFinancials,
+                GaragePermissions.ManageEstimates,
+                GaragePermissions.ManageInvoices,
+                GaragePermissions.ProcessPayments,
+                GaragePermissions.ViewReports,
+                GaragePermissions.ExportCustomerData
+            },
+            [WorkshopManager] = new[]
+            {
+                GaragePermissions.ViewWorkshops,
+                GaragePermissions.ManageInterventions,
+                GaragePermissions.AssignMechanics,
+                GaragePermissions.ManageSchedules,
+                GaragePermissions.ManageParts,
+                GaragePermissions.ManageInventory,
+                GaragePermissions.ViewFinancials,
+                GaragePermissions.ManageEstimates,
+                GaragePermissions.ViewReports
+            },
+            [ServiceAdvisor] = new[]
+            {
+                GaragePermissions.ViewWorkshops,
+                GaragePermissions.CreateInterventions,
+                GaragePermissions.EditInterventions,
+                GaragePermissions.ViewMechanics,
+                GaragePermissions.ViewParts,
+                GaragePermissions.ManageEstimates,
+                GaragePermissions.ViewCustomerData
+            },
+            [Mechanic] = new[]
+            {
+                GaragePermissions.ViewInterventions,
+                GaragePermissions.StartWork,
+                GaragePermissions.CompleteWork,
+                GaragePermissions.ViewParts,
+                GaragePermissions.ViewSchedules
+            },
+            [PartsManger] = new[]
+            {
+                GaragePermissions.ViewParts,
+                GaragePermissions.ManageParts,
+                GaragePermissions.ManageInventory,
+                GaragePermissions.ViewReports
+            },
+            [Receptionist] = new[]
+            {
+                GaragePermissions.ViewInterventions,
+                GaragePermissions.CreateInterventions,
+                GaragePermissions.ViewCustomerData
+            }
+        };
+    }
+}
+```
+
+#### Permission Enforcement
+```csharp
+namespace DriveOps.Garage.Infrastructure.Security
+{
+    public class GarageAuthorizationHandler : AuthorizationHandler<PermissionRequirement>
+    {
+        private readonly IUserPermissionService _permissionService;
+        private readonly ITenantContext _tenantContext;
+
+        protected override async Task HandleRequirementAsync(
+            AuthorizationHandlerContext context,
+            PermissionRequirement requirement)
+        {
+            var userId = context.User.GetUserId();
+            var tenantId = context.User.GetTenantId();
+
+            if (userId == null || tenantId == null)
+            {
+                context.Fail();
+                return;
+            }
+
+            // Check if user has the required permission
+            var hasPermission = await _permissionService.HasPermissionAsync(
+                Guid.Parse(userId), 
+                requirement.Permission
+            );
+
+            if (hasPermission)
+            {
+                context.Succeed(requirement);
+            }
+            else
+            {
+                context.Fail();
+            }
+        }
+    }
+
+    // Attribute for controller actions
+    public class RequireGaragePermissionAttribute : AuthorizeAttribute
+    {
+        public RequireGaragePermissionAttribute(string permission)
+        {
+            Policy = $"garage_permission_{permission}";
+        }
+    }
+}
+```
+
+### 10.2 Data Protection & GDPR Compliance
+
+#### Personal Data Handling
+```csharp
+namespace DriveOps.Garage.Domain.Services
+{
+    public interface IDataProtectionService
+    {
+        Task<CustomerDataExportDto> ExportCustomerDataAsync(Guid customerId);
+        Task AnonymizeCustomerDataAsync(Guid customerId);
+        Task DeleteCustomerDataAsync(Guid customerId);
+        Task<List<DataProcessingActivityDto>> GetDataProcessingActivitiesAsync();
+    }
+
+    public class DataProtectionService : IDataProtectionService
+    {
+        private readonly IInterventionRepository _interventionRepository;
+        private readonly ICustomerRepository _customerRepository;
+        private readonly ILogger<DataProtectionService> _logger;
+
+        public async Task<CustomerDataExportDto> ExportCustomerDataAsync(Guid customerId)
+        {
+            // Export all customer data in structured format for GDPR compliance
+            var interventions = await _interventionRepository.GetByCustomerIdAsync(customerId);
+            var serviceHistory = await GetServiceHistoryAsync(customerId);
+            var estimates = await GetEstimatesAsync(customerId);
+            var invoices = await GetInvoicesAsync(customerId);
+
+            return new CustomerDataExportDto
+            {
+                CustomerId = customerId,
+                ExportDate = DateTime.UtcNow,
+                Interventions = interventions.Select(MapToExportDto).ToList(),
+                ServiceHistory = serviceHistory,
+                Estimates = estimates,
+                Invoices = invoices,
+                DataRetentionPeriod = "7 years",
+                LegalBasis = "Contract performance and legitimate business interest"
+            };
+        }
+
+        public async Task AnonymizeCustomerDataAsync(Guid customerId)
+        {
+            // Anonymize personal data while preserving business analytics
+            var interventions = await _interventionRepository.GetByCustomerIdAsync(customerId);
+            
+            foreach (var intervention in interventions)
+            {
+                intervention.AnonymizeCustomerData();
+            }
+
+            await _interventionRepository.SaveChangesAsync();
+            
+            _logger.LogInformation("Customer data anonymized for customer {CustomerId}", customerId);
+        }
+
+        public async Task<List<DataProcessingActivityDto>> GetDataProcessingActivitiesAsync()
+        {
+            return new List<DataProcessingActivityDto>
+            {
+                new()
+                {
+                    Activity = "Vehicle Service Management",
+                    Purpose = "Providing automotive repair and maintenance services",
+                    LegalBasis = "Contract performance",
+                    DataCategories = new[] { "Contact details", "Vehicle information", "Service history" },
+                    Recipients = new[] { "Workshop staff", "Parts suppliers", "Insurance companies" },
+                    RetentionPeriod = "7 years after last service",
+                    DataSubjects = new[] { "Vehicle owners", "Service customers" }
+                }
+            };
+        }
+    }
+}
+```
+
+### 10.3 Audit Logging
+
+#### Comprehensive Audit Trail
+```csharp
+namespace DriveOps.Garage.Infrastructure.Auditing
+{
+    public interface IAuditService
+    {
+        Task LogInterventionActionAsync(Guid interventionId, string action, object? details = null);
+        Task LogFinancialTransactionAsync(Guid transactionId, string transactionType, decimal amount);
+        Task LogDataAccessAsync(string dataType, Guid recordId, string accessType);
+        Task LogSecurityEventAsync(string eventType, string details);
+    }
+
+    public class AuditService : IAuditService
+    {
+        private readonly IAuditRepository _auditRepository;
+        private readonly ITenantContext _tenantContext;
+        private readonly IUserContext _userContext;
+
+        public async Task LogInterventionActionAsync(Guid interventionId, string action, object? details = null)
+        {
+            var auditEntry = new AuditEntry
+            {
+                TenantId = _tenantContext.TenantId,
+                UserId = _userContext.UserId,
+                EntityType = "Intervention",
+                EntityId = interventionId.ToString(),
+                Action = action,
+                Details = details != null ? JsonSerializer.Serialize(details) : null,
+                Timestamp = DateTime.UtcNow,
+                IpAddress = _userContext.IpAddress,
+                UserAgent = _userContext.UserAgent
+            };
+
+            await _auditRepository.AddAsync(auditEntry);
+        }
+
+        public async Task LogFinancialTransactionAsync(Guid transactionId, string transactionType, decimal amount)
+        {
+            var auditEntry = new AuditEntry
+            {
+                TenantId = _tenantContext.TenantId,
+                UserId = _userContext.UserId,
+                EntityType = "FinancialTransaction",
+                EntityId = transactionId.ToString(),
+                Action = transactionType,
+                Details = JsonSerializer.Serialize(new { Amount = amount, Currency = "EUR" }),
+                Timestamp = DateTime.UtcNow,
+                Category = "Financial",
+                Sensitivity = AuditSensitivity.High
+            };
+
+            await _auditRepository.AddAsync(auditEntry);
+        }
+    }
+
+    // Event handler for automatic audit logging
+    public class AuditEventHandler : 
+        INotificationHandler<InterventionStatusChangedEvent>,
+        INotificationHandler<InterventionInvoiceGeneratedEvent>
+    {
+        private readonly IAuditService _auditService;
+
+        public async Task Handle(InterventionStatusChangedEvent notification, CancellationToken cancellationToken)
+        {
+            await _auditService.LogInterventionActionAsync(
+                notification.InterventionId,
+                "StatusChanged",
+                new { From = notification.PreviousStatus, To = notification.NewStatus }
+            );
+        }
+
+        public async Task Handle(InterventionInvoiceGeneratedEvent notification, CancellationToken cancellationToken)
+        {
+            await _auditService.LogInterventionActionAsync(
+                notification.InterventionId,
+                "InvoiceGenerated",
+                new { Amount = notification.TotalAmount.Amount, Currency = notification.TotalAmount.Currency }
+            );
+        }
+    }
+}
+```
+
+---
+
+## 11. Business Logic Implementation
+
+### 11.1 Pricing Engine
+
+#### Dynamic Pricing Service
+```csharp
+namespace DriveOps.Garage.Domain.Services
+{
+    public interface IPricingEngine
+    {
+        Task<Money> CalculateLaborPriceAsync(Guid mechanicId, decimal hours, SkillType skillType);
+        Task<Money> CalculatePartPriceAsync(Guid partId, int quantity, Guid? customerId = null);
+        Task<TaxCalculationResult> CalculateTaxesAsync(Money subtotal, Guid customerId);
+        Task<DiscountResult> CalculateDiscountsAsync(Guid customerId, List<InterventionItem> items);
+    }
+
+    public class PricingEngine : IPricingEngine
+    {
+        private readonly IMechanicRepository _mechanicRepository;
+        private readonly IPartRepository _partRepository;
+        private readonly ICustomerRepository _customerRepository;
+        private readonly ITaxService _taxService;
+        private readonly IDiscountService _discountService;
+
+        public async Task<Money> CalculateLaborPriceAsync(Guid mechanicId, decimal hours, SkillType skillType)
+        {
+            var mechanic = await _mechanicRepository.GetByIdAsync(mechanicId);
+            if (mechanic == null)
+                throw new NotFoundException($"Mechanic {mechanicId} not found");
+
+            var baseRate = mechanic.HourlyRate;
+            
+            // Apply skill multiplier
+            var skillMultiplier = GetSkillMultiplier(skillType, mechanic.Level);
+            var adjustedRate = baseRate * skillMultiplier;
+
+            // Apply time-based multipliers (overtime, weekend work, etc.)
+            var timeMultiplier = await GetTimeBasedMultiplierAsync(DateTime.UtcNow);
+            var finalRate = adjustedRate * timeMultiplier;
+
+            return Money.FromDecimal(finalRate * hours, "EUR");
+        }
+
+        public async Task<Money> CalculatePartPriceAsync(Guid partId, int quantity, Guid? customerId = null)
+        {
+            var part = await _partRepository.GetByIdAsync(partId);
+            if (part == null)
+                throw new NotFoundException($"Part {partId} not found");
+
+            var unitPrice = part.ListPrice.Amount;
+
+            // Apply customer-specific pricing
+            if (customerId.HasValue)
+            {
+                var customer = await _customerRepository.GetByIdAsync(customerId.Value);
+                if (customer != null)
+                {
+                    unitPrice = await ApplyCustomerPricingAsync(unitPrice, customer, part);
+                }
+            }
+
+            // Apply quantity discounts
+            unitPrice = ApplyQuantityDiscount(unitPrice, quantity, part.Category);
+
+            return Money.FromDecimal(unitPrice * quantity, part.ListPrice.Currency);
+        }
+
+        public async Task<TaxCalculationResult> CalculateTaxesAsync(Money subtotal, Guid customerId)
+        {
+            var customer = await _customerRepository.GetByIdAsync(customerId);
+            if (customer == null)
+                throw new NotFoundException($"Customer {customerId} not found");
+
+            // Get applicable tax rates based on customer location and service type
+            var taxRates = await _taxService.GetApplicableTaxRatesAsync(customer.Address, "automotive_service");
+            
+            var taxAmount = Money.FromDecimal(0, subtotal.Currency);
+            var taxBreakdown = new List<TaxLineItem>();
+
+            foreach (var taxRate in taxRates)
+            {
+                var taxLineAmount = subtotal.Amount * (taxRate.Rate / 100);
+                var taxLineMoney = Money.FromDecimal(taxLineAmount, subtotal.Currency);
+                
+                taxAmount += taxLineMoney;
+                taxBreakdown.Add(new TaxLineItem
+                {
+                    TaxName = taxRate.Name,
+                    Rate = taxRate.Rate,
+                    Amount = taxLineMoney
+                });
+            }
+
+            return new TaxCalculationResult
+            {
+                Subtotal = subtotal,
+                TotalTax = taxAmount,
+                Total = subtotal + taxAmount,
+                TaxBreakdown = taxBreakdown
+            };
+        }
+
+        private decimal GetSkillMultiplier(SkillType skillType, MechanicLevel mechanicLevel)
+        {
+            // Premium skills command higher rates
+            var skillPremium = skillType switch
+            {
+                SkillType.Diagnosis => 1.2m,
+                SkillType.Electric => 1.3m,
+                SkillType.Hybrid => 1.4m,
+                SkillType.Engine => 1.1m,
+                SkillType.Transmission => 1.15m,
+                _ => 1.0m
+            };
+
+            // Experience level multiplier
+            var levelMultiplier = mechanicLevel switch
+            {
+                MechanicLevel.Apprentice => 0.8m,
+                MechanicLevel.Junior => 0.9m,
+                MechanicLevel.Senior => 1.0m,
+                MechanicLevel.Expert => 1.2m,
+                MechanicLevel.Master => 1.4m,
+                _ => 1.0m
+            };
+
+            return skillPremium * levelMultiplier;
+        }
+
+        private async Task<decimal> GetTimeBasedMultiplierAsync(DateTime serviceTime)
+        {
+            var multiplier = 1.0m;
+
+            // Weekend work
+            if (serviceTime.DayOfWeek == DayOfWeek.Saturday || serviceTime.DayOfWeek == DayOfWeek.Sunday)
+                multiplier *= 1.25m;
+
+            // Evening work (after 18:00)
+            if (serviceTime.Hour >= 18)
+                multiplier *= 1.15m;
+
+            // Emergency work (outside business hours)
+            if (serviceTime.Hour < 8 || serviceTime.Hour > 20)
+                multiplier *= 1.5m;
+
+            return multiplier;
+        }
+    }
+}
+```
+
+### 11.2 Inventory Management
+
+#### Automated Reordering System
+```csharp
+namespace DriveOps.Garage.Domain.Services
+{
+    public interface IInventoryManagementService
+    {
+        Task ProcessStockMovementAsync(Guid partId, StockMovementDto movement);
+        Task CheckAndTriggerReorderingAsync();
+        Task OptimizeStockLevelsAsync();
+        Task ForecastPartDemandAsync(TimeSpan period);
+    }
+
+    public class InventoryManagementService : IInventoryManagementService
+    {
+        private readonly IPartRepository _partRepository;
+        private readonly IInterventionRepository _interventionRepository;
+        private readonly ISupplierService _supplierService;
+        private readonly IAnalyticsService _analyticsService;
+
+        public async Task ProcessStockMovementAsync(Guid partId, StockMovementDto movement)
+        {
+            var part = await _partRepository.GetByIdAsync(partId);
+            if (part == null)
+                throw new NotFoundException($"Part {partId} not found");
+
+            // Calculate new stock level
+            var newStock = movement.Type switch
+            {
+                StockMovementType.Purchase => part.CurrentStock + movement.Quantity,
+                StockMovementType.Sale => part.CurrentStock - movement.Quantity,
+                StockMovementType.Return => part.CurrentStock + movement.Quantity,
+                StockMovementType.Adjustment => movement.Quantity, // Absolute value
+                StockMovementType.Transfer => part.CurrentStock - movement.Quantity,
+                StockMovementType.Waste => part.CurrentStock - movement.Quantity,
+                _ => part.CurrentStock
+            };
+
+            // Validate stock levels
+            if (newStock < 0 && movement.Type != StockMovementType.Adjustment)
+                throw new InsufficientStockException($"Insufficient stock for part {part.PartNumber}");
+
+            // Update stock
+            part.UpdateStock(newStock, movement.Type, movement.Reference);
+
+            // Record stock movement history
+            await RecordStockMovementAsync(partId, movement);
+
+            // Check if reordering is needed
+            if (newStock <= part.MinimumStock)
+            {
+                await TriggerReorderAsync(part);
+            }
+        }
+
+        public async Task CheckAndTriggerReorderingAsync()
+        {
+            var lowStockParts = await _partRepository.GetLowStockPartsAsync();
+            
+            foreach (var part in lowStockParts)
+            {
+                await TriggerReorderAsync(part);
+            }
+        }
+
+        public async Task OptimizeStockLevelsAsync()
+        {
+            var parts = await _partRepository.GetAllActivePartsAsync();
+            
+            foreach (var part in parts)
+            {
+                var usage = await AnalyzePartUsageAsync(part.Id);
+                var optimizedLevels = CalculateOptimalStockLevels(usage);
+                
+                if (ShouldUpdateStockLevels(part, optimizedLevels))
+                {
+                    part.UpdateStockLevels(optimizedLevels.MinimumStock, optimizedLevels.ReorderQuantity);
+                }
+            }
+        }
+
+        private async Task TriggerReorderAsync(Part part)
+        {
+            var preferredSupplier = part.GetPreferredSupplier();
+            if (preferredSupplier == null)
+            {
+                await NotifyNoSupplierAsync(part);
+                return;
+            }
+
+            // Calculate reorder quantity based on usage patterns
+            var reorderQuantity = await CalculateReorderQuantityAsync(part);
+            
+            try
+            {
+                await _supplierService.CreatePurchaseOrderAsync(
+                    preferredSupplier.SupplierId,
+                    part.Id,
+                    reorderQuantity
+                );
+
+                await NotifyReorderTriggeredAsync(part, reorderQuantity);
+            }
+            catch (Exception ex)
+            {
+                await NotifyReorderFailedAsync(part, ex.Message);
+            }
+        }
+
+        private async Task<PartUsageAnalysis> AnalyzePartUsageAsync(Guid partId)
+        {
+            var usageHistory = await _analyticsService.GetPartUsageHistoryAsync(partId, TimeSpan.FromDays(90));
+            
+            return new PartUsageAnalysis
+            {
+                AverageMonthlyUsage = usageHistory.AverageMonthlyUsage,
+                Seasonality = usageHistory.CalculateSeasonality(),
+                Trend = usageHistory.CalculateTrend(),
+                Variability = usageHistory.CalculateVariability()
+            };
+        }
+
+        private OptimalStockLevels CalculateOptimalStockLevels(PartUsageAnalysis usage)
+        {
+            // Safety stock calculation based on variability and lead time
+            var safetyStock = (int)Math.Ceiling(usage.Variability * Math.Sqrt(usage.LeadTimeDays));
+            
+            // Minimum stock = safety stock + lead time demand
+            var minimumStock = safetyStock + (int)Math.Ceiling(usage.AverageMonthlyUsage * (usage.LeadTimeDays / 30.0));
+            
+            // Reorder quantity using Economic Order Quantity (EOQ) formula
+            var orderingCost = 25.0; // Fixed cost per order
+            var holdingCostRate = 0.20; // 20% of part value per year
+            var annualDemand = usage.AverageMonthlyUsage * 12;
+            var partValue = usage.AveragePartValue;
+            
+            var eoq = Math.Sqrt((2 * annualDemand * orderingCost) / (partValue * holdingCostRate));
+            var reorderQuantity = Math.Max((int)Math.Ceiling(eoq), minimumStock);
+            
+            return new OptimalStockLevels
+            {
+                MinimumStock = minimumStock,
+                ReorderQuantity = reorderQuantity,
+                MaximumStock = minimumStock + reorderQuantity
+            };
+        }
+    }
+}
+```
+
+### 11.3 Quality Control Workflows
+
+#### Service Quality Management
+```csharp
+namespace DriveOps.Garage.Domain.Services
+{
+    public interface IQualityControlService
+    {
+        Task<QualityCheckResult> PerformPreWorkInspectionAsync(Guid interventionId);
+        Task<QualityCheckResult> PerformPostWorkInspectionAsync(Guid interventionId);
+        Task RecordQualityIssueAsync(Guid interventionId, QualityIssueDto issue);
+        Task<List<QualityMetricsDto>> GetQualityMetricsAsync(Guid workshopId, DateTime fromDate, DateTime toDate);
+    }
+
+    public class QualityControlService : IQualityControlService
+    {
+        private readonly IInterventionRepository _interventionRepository;
+        private readonly IQualityCheckRepository _qualityCheckRepository;
+        private readonly INotificationService _notificationService;
+
+        public async Task<QualityCheckResult> PerformPreWorkInspectionAsync(Guid interventionId)
+        {
+            var intervention = await _interventionRepository.GetByIdAsync(interventionId);
+            if (intervention == null)
+                throw new NotFoundException($"Intervention {interventionId} not found");
+
+            var checklist = await GetQualityChecklistAsync(intervention.Type);
+            var checkResult = new QualityCheckResult
+            {
+                InterventionId = interventionId,
+                CheckType = QualityCheckType.PreWork,
+                Timestamp = DateTime.UtcNow,
+                Items = new List<QualityCheckItem>()
+            };
+
+            foreach (var checkItem in checklist.PreWorkItems)
+            {
+                var result = await PerformCheckItemAsync(intervention, checkItem);
+                checkResult.Items.Add(result);
+            }
+
+            checkResult.OverallResult = DetermineOverallResult(checkResult.Items);
+            
+            await _qualityCheckRepository.SaveAsync(checkResult);
+
+            if (checkResult.OverallResult == QualityResult.Failed)
+            {
+                await NotifyQualityFailureAsync(intervention, checkResult);
+            }
+
+            return checkResult;
+        }
+
+        public async Task<QualityCheckResult> PerformPostWorkInspectionAsync(Guid interventionId)
+        {
+            var intervention = await _interventionRepository.GetByIdWithItemsAsync(interventionId);
+            if (intervention == null)
+                throw new NotFoundException($"Intervention {interventionId} not found");
+
+            var checklist = await GetQualityChecklistAsync(intervention.Type);
+            var checkResult = new QualityCheckResult
+            {
+                InterventionId = interventionId,
+                CheckType = QualityCheckType.PostWork,
+                Timestamp = DateTime.UtcNow,
+                Items = new List<QualityCheckItem>()
+            };
+
+            // Perform specific checks based on work performed
+            foreach (var item in intervention.Items)
+            {
+                var itemChecks = await GetWorkItemChecksAsync(item);
+                foreach (var check in itemChecks)
+                {
+                    var result = await PerformCheckItemAsync(intervention, check);
+                    checkResult.Items.Add(result);
+                }
+            }
+
+            // General post-work checks
+            foreach (var checkItem in checklist.PostWorkItems)
+            {
+                var result = await PerformCheckItemAsync(intervention, checkItem);
+                checkResult.Items.Add(result);
+            }
+
+            checkResult.OverallResult = DetermineOverallResult(checkResult.Items);
+            
+            await _qualityCheckRepository.SaveAsync(checkResult);
+
+            if (checkResult.OverallResult == QualityResult.Passed)
+            {
+                // Allow intervention completion
+                intervention.PassQualityControl();
+            }
+            else
+            {
+                // Require rework
+                await HandleQualityFailureAsync(intervention, checkResult);
+            }
+
+            return checkResult;
+        }
+
+        private async Task<QualityCheckItem> PerformCheckItemAsync(Intervention intervention, QualityCheckTemplate template)
+        {
+            var checkItem = new QualityCheckItem
+            {
+                CheckId = template.Id,
+                Description = template.Description,
+                Category = template.Category,
+                IsCritical = template.IsCritical,
+                Timestamp = DateTime.UtcNow
+            };
+
+            // Automated checks where possible
+            if (template.IsAutomated)
+            {
+                checkItem.Result = await PerformAutomatedCheckAsync(intervention, template);
+                checkItem.IsAutomated = true;
+            }
+            else
+            {
+                // Manual checks require human inspection
+                checkItem.Result = QualityResult.Pending;
+                checkItem.RequiresManualInspection = true;
+            }
+
+            return checkItem;
+        }
+
+        private async Task<QualityResult> PerformAutomatedCheckAsync(Intervention intervention, QualityCheckTemplate template)
+        {
+            return template.CheckType switch
+            {
+                "diagnostic_codes_cleared" => await CheckDiagnosticCodesAsync(intervention.VehicleId),
+                "battery_voltage" => await CheckBatteryVoltageAsync(intervention.VehicleId),
+                "fluid_levels" => await CheckFluidLevelsAsync(intervention.VehicleId),
+                "tire_pressure" => await CheckTirePressureAsync(intervention.VehicleId),
+                _ => QualityResult.Pending
+            };
+        }
+
+        private QualityResult DetermineOverallResult(List<QualityCheckItem> items)
+        {
+            if (items.Any(i => i.IsCritical && i.Result == QualityResult.Failed))
+                return QualityResult.Failed;
+
+            if (items.Any(i => i.Result == QualityResult.Pending))
+                return QualityResult.Pending;
+
+            if (items.Any(i => i.Result == QualityResult.Failed))
+                return QualityResult.PartiallyPassed;
+
+            return QualityResult.Passed;
+        }
+    }
+}
+```
+
+---
+
+## 12. Testing Strategy
+
+### 12.1 Unit Testing
+
+#### Domain Entity Tests
+```csharp
+namespace DriveOps.Garage.Tests.Domain.Entities
+{
+    public class InterventionTests
+    {
+        [Fact]
+        public void AddLaborItem_WithValidData_ShouldAddItem()
+        {
+            // Arrange
+            var intervention = CreateTestIntervention();
+            var mechanicId = Guid.NewGuid();
+            var description = "Engine diagnostic";
+            var hours = 2.5m;
+            var hourlyRate = 75.0m;
+
+            // Act
+            intervention.AddLaborItem(description, hours, hourlyRate, mechanicId);
+
+            // Assert
+            Assert.Single(intervention.Items);
+            var item = intervention.Items.First();
+            Assert.Equal(InterventionItemType.Labor, item.Type);
+            Assert.Equal(description, item.Description);
+            Assert.Equal(hours, item.Quantity);
+            Assert.Equal(mechanicId, item.MechanicId);
+            Assert.Equal(187.5m, item.TotalCost.Amount); // 2.5 * 75
+        }
+
+        [Fact]
+        public void AssignMechanic_WhenInterventionIsInProgress_ShouldThrowException()
+        {
+            // Arrange
+            var intervention = CreateTestIntervention();
+            intervention.StartWork(Guid.NewGuid());
+            var newMechanicId = Guid.NewGuid();
+
+            // Act & Assert
+            Assert.Throws<DomainException>(() => intervention.AssignMechanic(newMechanicId));
+        }
+
+        [Fact]
+        public void CalculateTotalCost_WithLaborAndParts_ShouldReturnCorrectTotal()
+        {
+            // Arrange
+            var intervention = CreateTestIntervention();
+            intervention.AddLaborItem("Labor", 2m, 50m, Guid.NewGuid());
+            intervention.AddPartItem(Guid.NewGuid(), "Oil filter", 1, Money.FromDecimal(25m, "EUR"));
+            intervention.AddPartItem(Guid.NewGuid(), "Oil", 5, Money.FromDecimal(8m, "EUR"));
+
+            // Act
+            var totalCost = intervention.TotalCost;
+
+            // Assert
+            Assert.Equal(165m, totalCost.Amount); // 100 (labor) + 25 (filter) + 40 (oil)
+            Assert.Equal("EUR", totalCost.Currency);
+        }
+
+        private static Intervention CreateTestIntervention()
+        {
+            return new Intervention(
+                Guid.NewGuid(), // tenantId
+                Guid.NewGuid(), // workshopId
+                "INT-2024-001",
+                Guid.NewGuid(), // vehicleId
+                Guid.NewGuid(), // customerId
+                InterventionType.Maintenance,
+                "Regular maintenance",
+                Priority.Medium,
+                50000,
+                Guid.NewGuid() // createdBy
+            );
+        }
+    }
+
+    public class PartTests
+    {
+        [Fact]
+        public void UpdateStock_WhenNewStockBelowMinimum_ShouldRaiseLowStockEvent()
+        {
+            // Arrange
+            var part = CreateTestPart();
+            var newStock = 2; // Below minimum of 5
+
+            // Act
+            part.UpdateStock(newStock, StockMovementType.Sale, "Test sale");
+
+            // Assert
+            Assert.Equal(newStock, part.CurrentStock);
+            var lowStockEvent = part.DomainEvents.OfType<PartLowStockEvent>().FirstOrDefault();
+            Assert.NotNull(lowStockEvent);
+            Assert.Equal(newStock, lowStockEvent.CurrentStock);
+            Assert.Equal(5, lowStockEvent.MinimumStock);
+        }
+
+        [Fact]
+        public void IsCompatibleWith_WithMatchingBrandAndModel_ShouldReturnTrue()
+        {
+            // Arrange
+            var part = CreateTestPart();
+            var brandId = Guid.NewGuid();
+            var modelId = Guid.NewGuid();
+            part.AddVehicleCompatibility(brandId, modelId, 2015, 2020);
+
+            // Act
+            var isCompatible = part.IsCompatibleWith(brandId, modelId, 2018);
+
+            // Assert
+            Assert.True(isCompatible);
+        }
+
+        private static Part CreateTestPart()
+        {
+            return new Part(
+                Guid.NewGuid(), // tenantId
+                "BRK-001",
+                "Brake Pads Front",
+                "Premium brake pads for front wheels",
+                PartCategory.Brakes,
+                "Brembo",
+                Money.FromDecimal(89.99m, "EUR"),
+                Money.FromDecimal(45.00m, "EUR"),
+                5, // minimum stock
+                20 // reorder quantity
+            );
+        }
+    }
+}
+```
+
+### 12.2 Integration Testing
+
+#### Repository Integration Tests
+```csharp
+namespace DriveOps.Garage.Tests.Integration.Repositories
+{
+    public class InterventionRepositoryTests : IClassFixture<DatabaseFixture>
+    {
+        private readonly DatabaseFixture _fixture;
+        private readonly InterventionRepository _repository;
+
+        public InterventionRepositoryTests(DatabaseFixture fixture)
+        {
+            _fixture = fixture;
+            _repository = new InterventionRepository(_fixture.Context);
+        }
+
+        [Fact]
+        public async Task GetInterventionsAsync_WithFilters_ShouldReturnFilteredResults()
+        {
+            // Arrange
+            var tenantId = Guid.NewGuid();
+            var workshopId = Guid.NewGuid();
+            await SeedTestDataAsync(tenantId, workshopId);
+
+            var criteria = new InterventionSearchCriteria
+            {
+                TenantId = tenantId,
+                WorkshopId = workshopId,
+                Status = InterventionStatus.InProgress,
+                Page = 1,
+                PageSize = 10
+            };
+
+            // Act
+            var result = await _repository.GetInterventionsAsync(criteria);
+
+            // Assert
+            Assert.NotNull(result);
+            Assert.True(result.Items.Count > 0);
+            Assert.All(result.Items, i => Assert.Equal(InterventionStatus.InProgress, i.Status));
+            Assert.All(result.Items, i => Assert.Equal(workshopId, i.WorkshopId));
+        }
+
+        [Fact]
+        public async Task AddAsync_WithValidIntervention_ShouldPersistToDatabase()
+        {
+            // Arrange
+            var intervention = CreateTestIntervention();
+
+            // Act
+            await _repository.AddAsync(intervention);
+            await _fixture.Context.SaveChangesAsync();
+
+            // Assert
+            var saved = await _repository.GetByIdAsync(intervention.Id);
+            Assert.NotNull(saved);
+            Assert.Equal(intervention.InterventionNumber, saved.InterventionNumber);
+            Assert.Equal(intervention.Description, saved.Description);
+        }
+
+        private async Task SeedTestDataAsync(Guid tenantId, Guid workshopId)
+        {
+            var interventions = new[]
+            {
+                CreateTestIntervention(tenantId, workshopId, InterventionStatus.InProgress),
+                CreateTestIntervention(tenantId, workshopId, InterventionStatus.Completed),
+                CreateTestIntervention(tenantId, workshopId, InterventionStatus.InProgress)
+            };
+
+            await _repository.AddRangeAsync(interventions);
+            await _fixture.Context.SaveChangesAsync();
+        }
+    }
+
+    public class DatabaseFixture : IDisposable
+    {
+        public GarageDbContext Context { get; private set; }
+
+        public DatabaseFixture()
+        {
+            var options = new DbContextOptionsBuilder<GarageDbContext>()
+                .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+                .Options;
+
+            Context = new GarageDbContext(options);
+            Context.Database.EnsureCreated();
+        }
+
+        public void Dispose()
+        {
+            Context.Dispose();
+        }
+    }
+}
+```
+
+### 12.3 API Testing
+
+#### Controller Integration Tests
+```csharp
+namespace DriveOps.Garage.Tests.Integration.Api
+{
+    public class InterventionsControllerTests : IClassFixture<WebApplicationFactory<Program>>
+    {
+        private readonly WebApplicationFactory<Program> _factory;
+        private readonly HttpClient _client;
+
+        public InterventionsControllerTests(WebApplicationFactory<Program> factory)
+        {
+            _factory = factory;
+            _client = _factory.CreateClient();
+        }
+
+        [Fact]
+        public async Task CreateIntervention_WithValidData_ShouldReturnCreated()
+        {
+            // Arrange
+            var request = new CreateInterventionRequest
+            {
+                WorkshopId = Guid.NewGuid(),
+                VehicleId = Guid.NewGuid(),
+                CustomerId = Guid.NewGuid(),
+                Type = InterventionType.Maintenance,
+                Description = "Regular maintenance service",
+                Priority = Priority.Medium,
+                CurrentMileage = 50000
+            };
+
+            // Act
+            var response = await _client.PostAsJsonAsync("/api/garage/interventions", request);
+
+            // Assert
+            Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+            var locationHeader = response.Headers.Location?.ToString();
+            Assert.NotNull(locationHeader);
+            Assert.Contains("/api/garage/interventions/", locationHeader);
+        }
+
+        [Fact]
+        public async Task GetInterventions_WithFilters_ShouldReturnFilteredResults()
+        {
+            // Arrange
+            var workshopId = Guid.NewGuid();
+            var status = InterventionStatus.InProgress;
+
+            // Act
+            var response = await _client.GetAsync($"/api/garage/interventions?workshopId={workshopId}&status={status}");
+
+            // Assert
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var content = await response.Content.ReadAsStringAsync();
+            var result = JsonSerializer.Deserialize<PagedResult<InterventionSummaryDto>>(content);
+            Assert.NotNull(result);
+        }
+
+        [Fact]
+        public async Task AssignMechanic_WithValidData_ShouldReturnNoContent()
+        {
+            // Arrange
+            var interventionId = await CreateTestInterventionAsync();
+            var request = new AssignMechanicRequest
+            {
+                MechanicId = Guid.NewGuid()
+            };
+
+            // Act
+            var response = await _client.PutAsJsonAsync($"/api/garage/interventions/{interventionId}/assign-mechanic", request);
+
+            // Assert
+            Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        }
+
+        private async Task<Guid> CreateTestInterventionAsync()
+        {
+            var request = new CreateInterventionRequest
+            {
+                WorkshopId = Guid.NewGuid(),
+                VehicleId = Guid.NewGuid(),
+                CustomerId = Guid.NewGuid(),
+                Type = InterventionType.Maintenance,
+                Description = "Test intervention",
+                Priority = Priority.Medium,
+                CurrentMileage = 50000
+            };
+
+            var response = await _client.PostAsJsonAsync("/api/garage/interventions", request);
+            var location = response.Headers.Location?.ToString();
+            var idString = location?.Split('/').Last();
+            return Guid.Parse(idString!);
+        }
+    }
+}
+```
+
+---
+
+## Conclusion
+
+The GARAGE commercial module represents a comprehensive workshop management solution that leverages modern software architecture principles and industry best practices. This documentation provides a complete technical blueprint for implementing a production-ready system that can scale from small independent garages to large automotive service chains.
+
+### Key Technical Achievements
+
+1. **Domain-Driven Design**: Clean separation of business logic with rich domain models and proper aggregates
+2. **CQRS Architecture**: Optimized read and write operations with clear command/query separation
+3. **Comprehensive Database Design**: Well-structured PostgreSQL schema with proper indexing and relationships
+4. **Security & Compliance**: GDPR-compliant data handling with robust audit trails and role-based access control
+5. **Performance Optimization**: Caching strategies, query optimization, and real-time updates via SignalR
+6. **Integration Architecture**: Seamless integration with core modules and external services
+7. **Quality Assurance**: Comprehensive testing strategy covering unit, integration, and API tests
+
+### Business Value Delivered
+
+- **Complete Workshop Operations**: End-to-end management from estimate to payment
+- **Resource Optimization**: Intelligent scheduling and inventory management
+- **Customer Experience**: Automated notifications and transparent service tracking
+- **Financial Control**: Integrated pricing, invoicing, and payment processing
+- **Analytics & Insights**: Performance metrics and business intelligence
+- **Scalability**: Architecture supports growth from single workshop to enterprise chains
+
+### Implementation Readiness
+
+This documentation provides everything needed for immediate implementation:
+- Complete domain models and business rules
+- Database schema with indexes and constraints
+- Application services and CQRS handlers
+- API contracts and integration patterns
+- UI components and user experience design
+- Security and compliance frameworks
+- Performance optimization strategies
+- Comprehensive testing approaches
+
+The GARAGE module is designed to be a cornerstone of the DriveOps platform, providing automotive businesses with the tools they need to operate efficiently, serve customers effectively, and grow profitably in today's competitive market.
+
+---
+
+*Document created: 2024-12-19*  
+*Last updated: 2024-12-19*  
+*Version: 1.0*
