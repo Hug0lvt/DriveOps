@@ -1,16 +1,41 @@
 ﻿@inherits LayoutComponentBase
-<div class="page">
-    <div class="sidebar">
+
+<RadzenLayout>
+    <RadzenHeader>
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0">
+            <RadzenSidebarToggle Click="@(() => sidebarExpanded = !sidebarExpanded)" />
+            <RadzenLabel Text="DriveOps" Style="margin-left: 1rem; font-size: 1.25rem; font-weight: bold;" />
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="1rem" Style="margin-left: auto; margin-right: 1rem;">
+                <RadzenButton Icon="notifications" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" />
+                <RadzenButton Icon="account_circle" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" />
+            </RadzenStack>
+        </RadzenStack>
+    </RadzenHeader>
+    
+    <RadzenSidebar @bind-Expanded="sidebarExpanded" Style="width: 300px">
         <NavMenu />
-    </div>
-
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
-        </div>
-
-        <article class="content px-4">
+    </RadzenSidebar>
+    
+    <RadzenBody>
+        <div style="padding: 1rem;">
             @Body
-        </article>
-    </main>
-</div>
+        </div>
+    </RadzenBody>
+</RadzenLayout>
+
+@code {
+    bool sidebarExpanded = true;
+
+    protected override void OnInitialized()
+    {
+        // Sur mobile, on collapse la sidebar par défaut
+        sidebarExpanded = !IsMobile();
+    }
+
+    private bool IsMobile()
+    {
+        // Simple détection mobile côté client
+        // On pourrait améliorer ça avec JS interop pour une détection plus précise
+        return false; // Pour l'instant, on laisse expanded sur desktop
+    }
+}
