@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace DriveOps.Infrastructure.Features.Sample.Configurations;
 
-public class SamplePostgreConfig : IEntityTypeConfiguration<Shared.Models.Sample.Sample>
+public class SamplePostgreConfiguration : IEntityTypeConfiguration<Shared.Models.Sample.Sample>
 {
     public void Configure(EntityTypeBuilder<Shared.Models.Sample.Sample> builder)
     {

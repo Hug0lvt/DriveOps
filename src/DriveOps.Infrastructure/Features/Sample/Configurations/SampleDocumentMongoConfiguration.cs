@@ -6,7 +6,7 @@ using DriveOps.Shared.Models.Sample;
 
 namespace DriveOps.Infrastructure.Features.Sample.Configurations;
 
-public static class SampleDocumentMongoConfig
+public static class SampleDocumentMongoConfiguration
 {
     public static void Configure()
     {

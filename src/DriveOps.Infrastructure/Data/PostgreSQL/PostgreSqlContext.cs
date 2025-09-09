@@ -20,7 +20,7 @@ public class PostgreSqlContext : DbContext
         base.OnModelCreating(modelBuilder);
 
         // Appliquer les configurations
-        modelBuilder.ApplyConfiguration(new SamplePostgreConfig());
+        modelBuilder.ApplyConfiguration(new SamplePostgreConfiguration());
     }
 
     // Unit of Work pattern methods

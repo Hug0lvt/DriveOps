@@ -5,12 +5,12 @@ using DriveOps.Infrastructure.Data.MongoDb;
 
 namespace DriveOps.Infrastructure.Features.Sample.Repositories;
 
-public class SampleDocumentMongoRepo
+public class SampleDocumentMongoRepository
 {
     private readonly MongoDbContext _context;
     private readonly IMongoCollection<SampleDocument> _collection;
 
-    public SampleDocumentMongoRepo(MongoDbContext context)
+    public SampleDocumentMongoRepository(MongoDbContext context)
     {
         _context = context;
         _collection = context.SampleDocuments;
