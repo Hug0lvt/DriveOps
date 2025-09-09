@@ -1,8 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using DriveOps.Shared.Models.Sample;
-using DriveOps.Infrastructure.Data;
+using SampleModel = DriveOps.Shared.Models.Sample.Sample;
 
-namespace DriveOps.Infrastructure.Features.Sample.Repositories;
+namespace DriveOps.Infrastructure.Data.PostgreSQL.Features.Sample;
 
 public class SampleRepository
 {
@@ -13,20 +13,20 @@ public class SampleRepository
         _context = context;
     }
 
-    public async Task<DriveOps.Shared.Models.Sample.Sample?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    public async Task<SampleModel?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
         return await _context.Samples
             .FirstOrDefaultAsync(s => s.Id == id && !s.IsDeleted, cancellationToken);
     }
 
-    public async Task<IEnumerable<DriveOps.Shared.Models.Sample.Sample>> GetAllAsync(CancellationToken cancellationToken = default)
+    public async Task<IEnumerable<SampleModel>> GetAllAsync(CancellationToken cancellationToken = default)
     {
         return await _context.Samples
             .Where(s => !s.IsDeleted)
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<DriveOps.Shared.Models.Sample.Sample> AddAsync(DriveOps.Shared.Models.Sample.Sample entity, CancellationToken cancellationToken = default)
+    public async Task<SampleModel> AddAsync(SampleModel entity, CancellationToken cancellationToken = default)
     {
         entity.Id = Guid.NewGuid();
         entity.CreatedAt = DateTime.UtcNow;
@@ -36,7 +36,7 @@ public class SampleRepository
         return entity;
     }
 
-    public async Task UpdateAsync(DriveOps.Shared.Models.Sample.Sample entity, CancellationToken cancellationToken = default)
+    public async Task UpdateAsync(SampleModel entity, CancellationToken cancellationToken = default)
     {
         entity.UpdatedAt = DateTime.UtcNow;
         _context.Samples.Update(entity);
@@ -54,14 +54,14 @@ public class SampleRepository
         }
     }
 
-    public async Task<IEnumerable<DriveOps.Shared.Models.Sample.Sample>> GetByStatusAsync(SampleStatus status, CancellationToken cancellationToken = default)
+    public async Task<IEnumerable<SampleModel>> GetByStatusAsync(SampleStatus status, CancellationToken cancellationToken = default)
     {
         return await _context.Samples
             .Where(s => s.Status == status && !s.IsDeleted)
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<DriveOps.Shared.Models.Sample.Sample?> GetByCodeAsync(string code, CancellationToken cancellationToken = default)
+    public async Task<SampleModel?> GetByCodeAsync(string code, CancellationToken cancellationToken = default)
     {
         return await _context.Samples
             .FirstOrDefaultAsync(s => s.Code == code && !s.IsDeleted, cancellationToken);

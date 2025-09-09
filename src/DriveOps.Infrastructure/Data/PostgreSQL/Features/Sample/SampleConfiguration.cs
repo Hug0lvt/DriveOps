@@ -1,12 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using DriveOps.Shared.Models.Sample;
 
-namespace DriveOps.Infrastructure.Features.Sample.Configurations;
+namespace DriveOps.Infrastructure.Data.PostgreSQL.Features.Sample;
 
-public class SampleConfiguration : IEntityTypeConfiguration<DriveOps.Shared.Models.Sample.Sample>
+public class SampleConfiguration : IEntityTypeConfiguration<Shared.Models.Sample.Sample>
 {
-    public void Configure(EntityTypeBuilder<DriveOps.Shared.Models.Sample.Sample> builder)
+    public void Configure(EntityTypeBuilder<Shared.Models.Sample.Sample> builder)
     {
         builder.ToTable("Samples");
         

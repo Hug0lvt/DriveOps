@@ -1,9 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using DriveOps.Shared.Models.Sample;
-using DriveOps.Infrastructure.Features.Sample.Configurations;
+using DriveOps.Infrastructure.Data.PostgreSQL.Features.Sample;
 
-namespace DriveOps.Infrastructure.Data;
+namespace DriveOps.Infrastructure.Data.PostgreSQL;
 
 public class PostgreSqlContext : DbContext
 {
