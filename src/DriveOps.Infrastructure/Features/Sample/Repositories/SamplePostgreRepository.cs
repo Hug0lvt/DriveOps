@@ -1,14 +1,15 @@
 using Microsoft.EntityFrameworkCore;
-using DriveOps.Shared.Models.Sample;
+using DriveOps.Infrastructure.Data.PostgreSQL;
 using SampleModel = DriveOps.Shared.Models.Sample.Sample;
+using DriveOps.Shared.Models.Sample;
 
-namespace DriveOps.Infrastructure.Data.PostgreSQL.Features.Sample;
+namespace DriveOps.Infrastructure.Features.Sample.Repositories;
 
-public class SampleRepository
+public class SamplePostgreRepository
 {
     private readonly PostgreSqlContext _context;
 
-    public SampleRepository(PostgreSqlContext context)
+    public SamplePostgreRepository(PostgreSqlContext context)
     {
         _context = context;
     }
@@ -59,11 +60,5 @@ public class SampleRepository
         return await _context.Samples
             .Where(s => s.Status == status && !s.IsDeleted)
             .ToListAsync(cancellationToken);
-    }
-
-    public async Task<SampleModel?> GetByCodeAsync(string code, CancellationToken cancellationToken = default)
-    {
-        return await _context.Samples
-            .FirstOrDefaultAsync(s => s.Code == code && !s.IsDeleted, cancellationToken);
     }
 }

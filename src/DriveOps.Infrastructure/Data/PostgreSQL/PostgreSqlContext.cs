@@ -1,7 +1,7 @@
+using DriveOps.Infrastructure.Features.Sample.Configurations;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
-using DriveOps.Shared.Models.Sample;
-using DriveOps.Infrastructure.Data.PostgreSQL.Features.Sample;
+using SampleModel = DriveOps.Shared.Models.Sample.Sample;
 
 namespace DriveOps.Infrastructure.Data.PostgreSQL;
 
@@ -13,18 +13,18 @@ public class PostgreSqlContext : DbContext
     {
     }
 
-    public DbSet<Sample> Samples { get; set; }
+    public DbSet<SampleModel> Samples { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
-        
+
         // Appliquer les configurations
-        modelBuilder.ApplyConfiguration(new SampleConfiguration());
+        modelBuilder.ApplyConfiguration(new SamplePostgreConfig());
     }
 
     // Unit of Work pattern methods
-    public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    public new async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         return await base.SaveChangesAsync(cancellationToken);
     }

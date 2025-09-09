@@ -1,19 +1,19 @@
-using DriveOps.Infrastructure.Data.PostgreSQL.Features.Sample;
+using DriveOps.Infrastructure.Features.Sample.Repositories;
 
 namespace DriveOps.Infrastructure.Data.PostgreSQL;
 
 public class PostgreSqlUnitOfWork
 {
     private readonly PostgreSqlContext _context;
-    private SampleRepository? _sampleRepository;
+    private SamplePostgreRepository? _sampleRepository;
 
     public PostgreSqlUnitOfWork(PostgreSqlContext context)
     {
         _context = context;
     }
 
-    public SampleRepository SampleRepository => 
-        _sampleRepository ??= new SampleRepository(_context);
+    public SamplePostgreRepository SampleRepository => 
+        _sampleRepository ??= new SamplePostgreRepository(_context);
 
     public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
